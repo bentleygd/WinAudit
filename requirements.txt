@@ -3,7 +3,6 @@ chardet==3.0.4
 idna==2.8
 pyasn1==0.4.8
 pyasn1-modules==0.2.8
-python-ldap==3.2.0
 requests==2.22.0
 urllib3==1.25.8
 pyotp==2.3.0
