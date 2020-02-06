@@ -112,14 +112,14 @@ class ADAudit():
                 'Server list only contains %d members.' % len(self.host_list)
             )
 
-    def get_domain_admins(self, ldap_dict, admin_dict):
+    def get_domain_admins(self, ldap_dict, adm_dn):
         """Returns all members in the domain admin group.
 
         Input:
         ldap_dict - dict(), A dictionary containing the following keys:
         ldap_url, bind_dn, bind_pwd
-        admin_dict - dict(), A dictionary containing the following keys:
-        adm_dn, adm_ou.
+        adm_dn, str(), The string to search for admins.
+
 
         Output:
         domain_admins - list(), A list of all members in the domain
@@ -155,8 +155,8 @@ class ADAudit():
         # Obtaining a list of domain admins.
         self.log_me.debug('Obtaining a list of domain admins.')
         admins = ldap_obj.search_s(
-            admin_dict['adm_dn'], SCOPE_SUBTREE,
-            'sAMAAccountName=Domain Admins', ['member'], attrsonly=0
+            adm_dn, SCOPE_SUBTREE, 'sAMAAccountName=Domain Admins',
+            ['member'], attrsonly=0
         )
         # Unbinding LDAP object to free up resources.
         ldap_obj.unbind_s()
