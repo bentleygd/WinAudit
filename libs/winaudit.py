@@ -30,7 +30,7 @@ class ADAudit():
         self.domain_admin_ex = []
         self.domain_admins = []
         self.log_me = getLogger('WinAudit_Log')
-        self.config_file = 'Example.conf'
+        self.config_file = 'config.cnf'
         self.config = ConfigParser()
         self.config.read(self.config_file)
 
@@ -80,14 +80,18 @@ class ADAudit():
         for ou in sever_ous:
             try:
                 server_data = (
-                    ldap_obj.search_s(ou, SCOPE_SUBTREE, 'name=*', ['name'],
-                                      attrsonly=0)
+                    ldap_obj.search_s(
+                        ou, SCOPE_SUBTREE, 'sAMAccountName=*', ['name'],
+                        attrsonly=0
+                    )
                 )
                 self.log_me.debug(
                     'Server members of %s succsefully retrieved' % ou
                 )
                 for server in server_data:
-                    self.host_list.append(server[1].get('name')[0])
+                    self.host_list.append(
+                        server[1].get('name')[0].decode(encoding='ascii')
+                    )
                 self.log_me.debug(
                     'Server members of %s added to host list.' % ou
                 )
@@ -155,8 +159,8 @@ class ADAudit():
         # Obtaining a list of domain admins.
         self.log_me.debug('Obtaining a list of domain admins.')
         admins = ldap_obj.search_s(
-            adm_dn, SCOPE_SUBTREE, 'sAMAAccountName=Domain Admins',
-            ['member'], attrsonly=0
+            adm_dn, SCOPE_SUBTREE, 'name=Domain Admins', ['member'],
+            attrsonly=0
         )
         # Unbinding LDAP object to free up resources.
         ldap_obj.unbind_s()
@@ -165,8 +169,9 @@ class ADAudit():
         # to the self.domain_admin attribute.
         for admin in admins[0][1]['member']:
             admin = admin.decode(encoding='ascii')
-            admin_name = search(r'(CN=)(.+)(,.+)', admin)
-            self.domain_admins.append(admin_name.group(2))
+            admin_name = search(r'(CN=)(\w+)(,OU=.+)', admin)
+            if admin_name:
+                self.domain_admins.append(admin_name.group(2))
         end = time()
         self.log_me.info('Domain admin list successfully generated.')
         _elapsed = end - start
@@ -186,9 +191,9 @@ class ADAudit():
         If this list is not empty, you have problems."""
         # Performing list comparison of domain admins gathered via
         # an LDP query against the list of known good admins.
-        known_admins = list(self.config['domain_admins']['good_admins'])
+        known_admins = self.config['domain_admins']['good_admins'].split(',')
         for admin in self.domain_admins:
-            if admin not in known_admins:
+            if admin.lower() not in known_admins:
                 # If there is a domain admin that is not on the approved
                 # list, append it to the list.
                 self.domain_admin_ex.append(admin)
@@ -219,9 +224,14 @@ class WinServerAudit(ADAudit):
         ADAudit.__init__(self)
         self.local_admins = []
         self.local_admin_ex = []
+        self.unreachable_servers = []
 
     def get_local_admins(self):
         """Retrieves the local admins from a Windows server.
+
+        Inputs:
+        self.host_list - list(), A list of hosts that is pouplated by
+        the get_servers method inherited from the ADAudit class.
 
         Outputs:
         self.local_admins - list(), A list of users that are in the
@@ -229,13 +239,17 @@ class WinServerAudit(ADAudit):
 
         Raises:
         TBD"""
-        local_admins = []
         # Connect to each server, and retrieve the domain and name of
         # the local administrators group.
         for server in self.host_list:
-            admin_data = NLGGM(r'\\' + server, 'administrators', 2)
+            local_admins = []
+            try:
+                admin_data = NLGGM(r'\\' + server, 'administrators', 1)
+            except Exception:
+                self.log_me.exception('Unable to connect to %s.' % server)
+                self.unreachable_servers.append(server)
             for data in admin_data[0]:
-                local_admins.append(data['domainandname'])
+                local_admins.append(data['name'])
             # Append the server name and list of local admins to the
             # local admins attribute.  This will be referenced later in
             # get_local_admin_ex.
@@ -250,7 +264,6 @@ class WinServerAudit(ADAudit):
         self.local_admins - list(), an attribue that is populated by
         get_local_admins.
 
-
         Outputs:
         self.local_admin_ex - list(), A list of accounts that are in
         the local admin group that do not have appropriate access."""
@@ -264,7 +277,7 @@ class WinServerAudit(ADAudit):
             bad_admin_data = {'host': data['host'], 'bad_admins': []}
             # Matching the hostname to the hosts in the config file to
             # check against list of approved admins.
-            if data['host'] in self.config['local_admins'].keys():
+            if data['host'].lower() in self.config['local_admins'].keys():
                 # If the local admin is not in the approved list,
                 # append to the bad_admin key in the bad_admins_data
                 # dictionary.
@@ -272,7 +285,7 @@ class WinServerAudit(ADAudit):
                     admin_list = (
                         self.config['local_admins'][data['host']].split(',')
                     )
-                    if admin not in admin_list:
+                    if admin.lower() not in admin_list:
                         bad_admin_data['bad_admins'].append(admin)
                         self.log_me.debug('%s is an unapproved admin' % admin)
                     else:
@@ -281,6 +294,11 @@ class WinServerAudit(ADAudit):
                 self.log_me.error('%s has no list of approved admins' % (
                     data['host'])
                 )
+                # If there is no data that specifies which admins are
+                # good on a server, assume they're all bad to ensure
+                # that they are reviewed.
+                for admin in data['admins']:
+                    bad_admin_data['bad_admins'].append(admin)
             bad_admins.append(bad_admin_data)
         for bad_admin in bad_admins:
             # If there are bad admins, append the hostname and the list
