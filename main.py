@@ -62,22 +62,21 @@ def main():
     server_audit.get_local_admin_ex()
     log_me.info('Server local admin audit complete.')
     # Creating a mail message.
-    msg_body = '*' * 64 + '\n'
-    msg_body = ('Domain Admin exceptions: ' +
-                str(ad_audit.domain_admin_ex).strip('[]'))
-    msg_body = msg_body + '\n'
-    msg_body = msg_body + '*' * 64 + '\n'
-    msg_body = msg_body + '%d hosts were audited.\n' % server_count
-    msg_body = msg_body + 'Local Admin Exceptions:' + '\n'
+    msg_body = ('*' * 64 + '\n' +
+                'Domain Admin exceptions: ' +
+                str(ad_audit.domain_admin_ex).strip('[]') +
+                '\n' +
+                '*' * 64 + '\n' +
+                '%d hosts were audited.\n' % server_count +
+                'Local Admin Exceptions:' + '\n')
     for local_admin_ex in server_audit.local_admin_ex:
         bad_admins = str(local_admin_ex['bad_admins']).strip('[]')
         msg_body = msg_body + (
             'Host name:%s Unapproved Local Admins:%s' + '\n' * 2
         ) % (local_admin_ex['host'], bad_admins)
-    msg_body = msg_body + '*' * 64 + '\n'
-    msg_body = msg_body + ('These hosts could not be audited.  Check ' +
-                           'the log for details.' + '\n')
-    msg_body = msg_body + str(server_audit.unreachable_servers)
+    msg_body = (msg_body + '*' * 64 + '\n' +
+                'These hosts could not be audited.  Check the log for ' +
+                'details.' + '\n' + str(server_audit.unreachable_servers))
     mail_info['body'] = msg_body
     core.mail_send(mail_info)
 
