@@ -7,3 +7,4 @@ requests==2.22.0
 urllib3==1.25.8
 pyotp==2.3.0
 pywin32==227
+python-ldap==3.2.0
