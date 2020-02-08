@@ -30,7 +30,7 @@ class ADAudit():
         self.domain_admin_ex = []
         self.domain_admins = []
         self.log_me = getLogger('WinAudit_Log')
-        self.config_file = 'config.cnf'
+        self.config_file = 'Example.conf'
         self.config = ConfigParser()
         self.config.read(self.config_file)
 
