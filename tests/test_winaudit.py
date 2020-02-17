@@ -8,7 +8,7 @@ class TestWinAudit:
     test_domain_admin_ex - A test case for the ADAudit.get_domain_admin_ex
     method.  This test verifies that the exception logic is working as
     intended.
-    
+
     test_local_admin_ex - A test case for the WinServerAudit.local_admin_ex
     method.  This test verifies that the exception logic is working as
     intended."""
