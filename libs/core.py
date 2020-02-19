@@ -9,12 +9,15 @@ from pyotp import TOTP
 
 def mail_send(mail_info):
     """Takes input, sends mail.
+
     Keyword arguments:
     mail_info - A dict() object with the following keys and
     corresponding values: sender, recipients, subject, server and
     body.
+
     Outputs:
     Sends an email, returns nothing.
+
     Raises:
     gaierror - Occurs when DNS resolution of a hostname fails.
     SMTPConnectError - Occurs when the remote SMTP sever refuses the
@@ -41,9 +44,11 @@ def mail_send(mail_info):
 
 def get_credentials(scss_dict):
     """Makes an API call to SCSS, returns credentials.
+
     Keyword Arguments:
     scss_dict - a dict() object containing the following keys with
     the correct corresponding values: api_key, otp, userid and url.
+
     Output:
     data - str(), the data returned from scss."""
     log = getLogger('WinAudit_Log')

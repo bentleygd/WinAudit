@@ -7,6 +7,7 @@ import libs.core as core
 
 def main():
     """Main function.
+
     This is used to avoid accidental code execution."""
     # Setting up logging.
     log_me = getLogger('WinAudit_Log')
