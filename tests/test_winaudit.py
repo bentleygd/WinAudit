@@ -5,9 +5,12 @@ class TestWinAudit:
     """WinAudit Test cases.
 
     Methods:
-    TestPlaceHolder - A test case to act as a placeholder.  It has no
-    actual value and should be removed once other test cases have been
-    developed."""
+    test_domain_admin_ex - A test case for the ADAudit.get_domain_admin_ex
+    method.  This test verifies that the exception logic is working as
+    intended.
+    test_local_admin_ex - A test case for the WinServerAudit.local_admin_ex
+    method.  This test verifies that the exception logic is working as
+    intended."""
     def test_domain_admin_ex(self):
         audit_test = ADAudit()
         audit_test.domain_admins = ['bwayne', 'rgrayson', 'hdent']
