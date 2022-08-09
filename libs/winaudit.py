@@ -1,10 +1,10 @@
 from logging import getLogger
 from time import time
-from re import search
 from configparser import ConfigParser
+from ssl import PROTOCOL_TLS_CLIENT
 
-from ldap import initialize, SCOPE_SUBTREE
-from ldap import SERVER_DOWN, INVALID_CREDENTIALS, SIZELIMIT_EXCEEDED
+from ldap3 import Connection, Server, SUBTREE, BASE, Tls
+from ldap3.core.exceptions import LDAPExceptionError
 from win32.win32net import NetLocalGroupGetMembers as NLGGM
 
 
@@ -34,15 +34,15 @@ class ADAudit():
         get_domain_admin_ex = compares list of admins retrieved from AD
         against a list of instrumented admins and returns the
         difference."""
-        self.host_list = []
+        self.server_list = []
         self.domain_admin_ex = []
         self.domain_admins = []
-        self.log_me = getLogger('WinAudit_Log')
+        self.log_me = getLogger(__name__)
         self.config_file = 'config.cnf'
         self.config = ConfigParser()
         self.config.read(self.config_file)
 
-    def get_servers(self, ldap_dict, sever_ous):
+    def get_servers(self, ldap_dict, server_ous):
         """Returns a list of servers in specific OUs.
 
         Inputs:
@@ -55,136 +55,176 @@ class ADAudit():
         server_list = self.host_list, a list of servers in server_ous.
 
         Rasies:
-        SERVER_DOWN - Fatal exception that is raised when the LDAP
-        server passed in the ldap_dict is not reachable.
-        INVALID_CREDENTIALS - Fatal exception that is raised when the
-        credentials provided in ldap_dict do not log on.
-        SIZELIMIT_EXCEEDED - The returned results of a search are
-        greater that the LDAP server's max size limit."""
-        # Connecting to LDAP server (i.e., a domain controller)
-        ldap_obj = initialize(ldap_dict['ldap_url'])
-        start = time()
-        try:
-            ldap_obj.simple_bind_s(
-                ldap_dict['bind_dn'], ldap_dict['bind_pwd']
-            )
-        # Some exception handling.
-        except INVALID_CREDENTIALS:
-            self.log_me.exception(
-                'Login failure when attempting to connect to: %s',
-                ldap_dict['ldap_url']
-            )
-            exit(1)
-        except SERVER_DOWN:
-            self.log_me.exception(
-                'Cannot contact server at: %s' % ldap_dict['ldap_url']
-            )
-            exit(1)
-        self.log_me.debug(
-            'Successfully connected to %s' % ldap_dict['ldap_url']
+        LDAPExceptionError - Base LDAP exception class for catching LDAP
+        errors."""
+        raw_data = []
+        # Setting constants to reduce future line length
+        # This is the LDAP URL (i.e., the server you connect to)
+        l_url = ldap_dict['ldap_url']
+        # The BIND DN is the user name used in the connection.
+        bind_dn = ldap_dict['bind_dn']
+        # This the password used to connect to LDAP.
+        l_passwd = ldap_dict['bind_pwd']
+        # This is the TLS configuration used by the LDAP connection.
+        # We are disabling certificate validation to avoid
+        tls_config = Tls(
+            version=PROTOCOL_TLS_CLIENT,
+            ca_certs_file='ca-bundle.crt'
         )
-        # Iterating through OUs, appending the servers in those OUs to
-        # the host list.
-        for ou in sever_ous:
-            try:
-                server_data = (
-                    ldap_obj.search_s(
-                        ou, SCOPE_SUBTREE, 'sAMAccountName=*', ['name'],
-                        attrsonly=0
-                    )
-                )
-                self.log_me.debug(
-                    'Server members of %s succsefully retrieved' % ou
-                )
-                for server in server_data:
-                    self.host_list.append(
-                        server[1].get('name')[0].decode(encoding='ascii')
-                    )
-                self.log_me.debug(
-                    'Server members of %s added to host list.' % ou
-                )
-            # Some exception handling.
-            except SIZELIMIT_EXCEEDED:
-                self.log_me.exception(
-                    'Size limit exceeded reached when searhcing: %s' % ou
-                )
+        # Connecting to LDAP server (i.e., a domain controller)
+        server = Server(l_url, use_ssl=True, tls=tls_config)
+        try:
+            conn = Connection(
+                server,
+                user=bind_dn,
+                password=l_passwd,
+                auto_bind=True
+            )
+        except LDAPExceptionError:
+            self.log_me.exception('Error occurred connecting to LDAP server.')
+        # Setting an LDAP filter.
+        filter = ('(&(objectClass=computer)(objectCategory=CN=Computer,' +
+                  'CN=Schema,CN=Configuration,DC=24hourfit,DC=com))')
+        # Iterating through each OU specified in search_ous to populate
+        # self.server_list with server names retreived from LDAP.
+        for ou in server_ous:
+            search_data = conn.extend.standard.paged_search(
+                ou,
+                filter,
+                search_scope=SUBTREE,
+                attributes=['sAMAccountName'],
+                paged_size=500,
+            )
+            for data in search_data:
+                raw_data.append(data['raw_attributes'])
+        for server in raw_data:
+            server_name = server['sAMAccountName'][0].decode().lower()
+            self.server_list.append(server_name)
         # Unbinding LDAP object to free up resources.
-        ldap_obj.unbind_s()
-        end = time()
-        _elapsed = end - start
-        elapsed = int(round(_elapsed, 0))
-        self.log_me.debug('It took %d seconds to retrieve servers' % elapsed)
+        conn.unbind()
         self.log_me.info(
-            '%d servers added to audit population.' % len(self.host_list)
+            '%d servers added to audit population.' % len(self.server_list)
         )
         # Checking the host list to make sure that it has a reasonable
         # population.
-        if len(self.host_list) < 20:
+        if len(self.server_list) < 20:
             self.log_me.error(
-                'Server list only contains %d members.' % len(self.host_list)
+                'Server list only contains %d members.' % len(self.server_list)
             )
 
-    def get_domain_admins(self, ldap_dict, adm_dn):
-        """Returns all members in the domain admin group.
+    def audit_domain_admins(self, ldap_dict):
+        """Returns a list of unauthorized domain admins.
 
-        Input:
-        ldap_dict - dict(), A dictionary containing the following keys:
+        Keyword Arguments:
+        ldap_dict - dict(), a dictionary containing the following keys:
         ldap_url, bind_dn, bind_pwd
-        adm_dn, str(), The string (for the admin groups) to search for.
 
-
-        Output:
-        domain_admins - list(), A list of all members in the domain
-        admin group.
+        Returns:
+        admin_list - list(), A list of dictionaries containing domain
+        admins.
 
         Raises:
-        SERVER_DOWN - Fatal exception that is raised when the LDAP
-        server passed in the ldap_dict is not reachable.
-        INVALID_CREDENTIALS - Fatal exception that is raised when the
-        credentials provided in ldap_dict do not log on."""
-        # Connecting to LDAP server (i.e., a domain controller)
-        ldap_obj = initialize(ldap_dict['ldap_url'])
-        start = time()
+        LDAPExceptionError - Occurs when the LDAP3 functions generate an
+        error.  The base class for all LDAPExcetionErrors is used so that
+        the log.exception call will catch the detailed exception while not
+        missing any potential exceptions."""
+        # Setting constants to reduce future line length
+        # This is the LDAP URL (i.e., the server you connect to)
+        l_url = ldap_dict['ldap_url']
+        # The BIND DN is the user name used in the connection.
+        bind_dn = ldap_dict['bind_dn']
+        # This the password used to connect to LDAP.
+        l_passwd = ldap_dict['bind_pwd']
+        # This is the TLS configuration used by the LDAP connection.
+        # Creating list of approved admins.
+        # approved_admins = (
+        #    self.config['domain_admins']['good_admins'].split(',')
+        # )
+        # Creating variables to use later.
+        admin_list = []
+        admin_groups = []
+        # Connecting to LDAP.
+        tls_config = Tls(
+            version=PROTOCOL_TLS_CLIENT,
+            ca_certs_file='ca-bundle.crt'
+            )
+        server = Server(l_url, use_ssl=True, tls=tls_config)
         try:
-            ldap_obj.simple_bind_s(
-                ldap_dict['bind_dn'], ldap_dict['bind_pwd']
+            conn = Connection(
+                server,
+                user=bind_dn,
+                password=l_passwd,
+                auto_bind=True
             )
-        # Some exception handling.
-        except INVALID_CREDENTIALS:
-            self.log_me.exception(
-                'Login failure when attempting to connect to: %s' %
-                (ldap_dict['ldap_url'])
-            )
-            exit(1)
-        except SERVER_DOWN:
-            self.log_me.exception(
-                'Cannot contact server at: %s' % ldap_dict['ldap_url']
-            )
-            exit(1)
-        self.log_me.debug(
-            'Successfully connected to %s' % ldap_dict['ldap_url']
+        except LDAPExceptionError:
+            self.log_me.exception('Error occurred connecting to LDAP server.')
+        # Getting admins
+        builtin_admins = conn.extend.standard.paged_search(
+            self.config['domain_admins']['adm_dn'],
+            '(objectClass=group)',
+            search_scope=SUBTREE,
+            attributes=['member'],
+            paged_size=50,
+            generator=False
         )
-        # Obtaining a list of domain admins.
-        self.log_me.debug('Obtaining a list of domain admins.')
-        admins = ldap_obj.search_s(
-            adm_dn, SCOPE_SUBTREE, 'name=Domain Admins', ['member'],
-            attrsonly=0
-        )
-        # Unbinding LDAP object to free up resources.
-        ldap_obj.unbind_s()
-        # Iterating through the list of domain admins, and parsing out
-        # the common name of the domain admin.  Appending that name
-        # to the self.domain_admin attribute.
-        for admin in admins[0][1]['member']:
-            admin = admin.decode(encoding='ascii')
-            admin_name = search(r'(CN=)(\w+)(,OU=.+)', admin)
-            if admin_name:
-                self.domain_admins.append(admin_name.group(2))
-        end = time()
-        self.log_me.info('Domain admin list successfully generated.')
-        _elapsed = end - start
-        elapsed = int(round(_elapsed, 0))
-        self.log_me.debug('Domain admins retrieved in %d seconds' % elapsed)
+        # Determining if the built-in admininstrator group member is a
+        # group or a user.  If it is a group, enumerating that groups
+        # members as well.
+        ldap_filter = '(|(objectClass=group)(objectClass=user))'
+        for builtin_admin in builtin_admins[0]['attributes']['member']:
+            search_base = builtin_admin
+            admin_data = conn.extend.standard.paged_search(
+                search_base,
+                ldap_filter,
+                BASE,
+                attributes=['sAMAccountName', 'distinguishedName',
+                            'objectClass', 'description'],
+                paged_size=100,
+                generator=False
+            )
+            # Checking to see if the group member is a group.
+            if 'group' in admin_data[0]['attributes']['objectClass']:
+                admin_groups.append(
+                    admin_data[0]['attributes']['distinguishedName']
+                )
+            # Checking to see if the group member is a user.
+            elif 'user' in admin_data[0]['attributes']['objectClass']:
+                admin_list.append({
+                    'name': admin_data[0]['attributes']['sAMAccountName'],
+                    'desc': admin_data[0]['attributes']['description'][0],
+                })
+        # Retrieving nested group information.  If the group member is
+        # a user, we append it to admin_list.  If the group member is
+        # a group, we append it to admin_groups.  This process is
+        # repeated until there are no more groups (we ahve a list of
+        # only users).
+        while len(admin_groups) > 0:
+            entry = admin_groups.pop(0)
+            admin_data = conn.extend.standard.paged_search(
+                entry,
+                ldap_filter,
+                BASE,
+                attributes=['sAMAccountName', 'distinguishedName',
+                            'objectClass', 'description', 'member'],
+                paged_size=100,
+                generator=False
+            )
+            # Checking to see if the member is a user.  If it is not
+            # already in the admin_list, append it to the admin_list.
+            if 'user' in admin_data[0]['attributes']['objectClass']:
+                admin_data = {
+                    'name': admin_data[0]['attributes']['sAMAccountName'],
+                    'desc': admin_data[0]['attributes']['description'][0]
+                }
+                if admin_data not in admin_list:
+                    admin_list.append(admin_data)
+            # Checking to see if the group member is a group.
+            elif 'group' in admin_data[0]['attributes']['objectClass']:
+                for member in admin_data[0]['attributes']['member']:
+                    admin_groups.append(member)
+        # Unbinding ldap object.
+        conn.unbind()
+        return admin_list
 
     def get_domain_admin_ex(self):
         """Populates self.domain_admin_ex with list of bad admins.
