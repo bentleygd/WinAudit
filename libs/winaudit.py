@@ -6,6 +6,7 @@ from ssl import PROTOCOL_TLS_CLIENT
 from ldap3 import Connection, Server, SUBTREE, BASE, Tls
 from ldap3.core.exceptions import LDAPExceptionError
 from win32.win32net import NetLocalGroupGetMembers as NLGGM
+from requests import get, HTTPError
 
 
 class ADAudit():
@@ -272,17 +273,24 @@ class WinServerAudit(ADAudit):
         audit the host.
         self.reachable_servers = list(), A list of servers that were
         successfully audited during get_local_admins().
+        self.no_log_servers = list(), A list of servers that are not
+        configured as log sources in a SIEM.
 
         Methods:
         get_local_admins - Gets all of the local administrators from the
         parent attribute of host list.
         get_admin_ex - Generates a list of user accounts that are not
-        authorized to have local admin rights."""
+        authorized to have local admin rights.
+        get_siem_sources - Retrieves a list of log sources from IBM's
+        Q-Radar SIEM.
+        get_siem_source_ex - Generates a list of servers that are not
+        reporting in to the Q-Radar SIEM."""
         ADAudit.__init__(self)
         self.local_admins = []
         self.local_admin_ex = []
         self.unreachable_servers = []
         self.reachable_servers = []
+        self.no_log_servers = []
 
     def get_local_admins(self):
         """Retrieves the local admins from a Windows server.
@@ -376,3 +384,67 @@ class WinServerAudit(ADAudit):
         _elapsed = end - start
         elapsed = int(round(_elapsed, 0))
         self.log_me.debug('Admin audit completed in %d seconds' % elapsed)
+
+    def get_siem_sources(self):
+        """Retrieves the list of log source names from IBM's Q-Radar SIEM.
+
+        Required Input:
+        None.
+
+        Output:
+        source_list = list(), A list of log source names parsed from the
+        JSON repsonse returned by the Q-Radar log source API.
+
+        Exceptions:
+        HTTPError - Returned when there is an error connecting to the
+        log source endpoint."""
+        source_list = []
+        # Configuring the request to the Q-Radar endpoint
+        url = self.config['siem']['log_source_endpoint']
+        params = {'fields': 'name'}
+        headers = {
+            'version': '16.0',
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'SEC': self.config['siem']['token']
+        }
+        # Making the request.  Since Q-Radar uses a self signed cert, we
+        # are disabling SSL validation.
+        response = get(
+            url,
+            params=params,
+            headers=headers,
+            verify=False
+        )
+        # Checking to see if the request was successful
+        try:
+            response.raise_for_status()
+        except HTTPError:
+            self.log_me.exception(
+                """Request to Q-Radar log source API ended in non-200
+                response."""
+                )
+        # Parsing the JSON response
+        data = response.json()
+        for entry in data:
+            source_list.append(entry['name'])
+        return source_list
+
+    def get_siem_source_ex(self, log_source_list):
+        """This method is a list comparison that generates a list of
+        Windows servers that are not present in log_source_list.
+
+        Required Input:
+        log_source_list - list(), A list of hostnames that are sending
+        logs to a SIEM.
+
+        Output:
+        self.no_log_servers is updated and can be referenced to obtain
+        the results of this method.
+
+        Exceptions:
+        None."""
+        # Basic list content check.
+        for server in self.server_list:
+            if server not in log_source_list:
+                self.no_log_servers.append(server)
