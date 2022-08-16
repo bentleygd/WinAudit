@@ -64,7 +64,7 @@ def get_credentials(scss_dict):
         'userid': userid
     }
     scss_response = post(url, headers=headers,
-                         verify='ca-bundle.crt')
+                         verify=False)
     if scss_response.status_code == 200:
         data = scss_response.json().get('gpg_pass')
         log.debug('Credentials successfully retrieved from SCSS')

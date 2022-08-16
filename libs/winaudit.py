@@ -14,8 +14,8 @@ class ADAudit():
         """An active directory audit object.
 
         Attributes:
-        self.host_list = list(), a list of Windows Servers to audit.
-        self.domain_admin_ex = list(),a list objects containing the
+        self.server_list = list(), a list of Windows Servers to audit.
+        self.domain_admin_ex = list(),a list objecs containing the
         user names of accounts that should not have domain admin
         privileges.  If this list is not empty, you have problems.
         self.domain_admins = list(), members of the domain admin group.
@@ -53,7 +53,9 @@ class ADAudit():
         throug this list to obtain all servers in a given OU.
 
         Outputs:
-        server_list = self.host_list, a list of servers in server_ous.
+        self.server_list, a list of servers in server_ous.  This list
+        is updated but not returned.  The contents of the list can be
+        accessed by accessing the instance variable.
 
         Rasies:
         LDAPExceptionError - Base LDAP exception class for catching LDAP
@@ -225,7 +227,8 @@ class ADAudit():
                     admin_groups.append(member)
         # Unbinding ldap object.
         conn.unbind()
-        return admin_list
+        for admin in admin_list:
+            self.domain_admins.append(admin['name'])
 
     def get_domain_admin_ex(self):
         """Populates self.domain_admin_ex with list of bad admins.
@@ -308,7 +311,8 @@ class WinServerAudit(ADAudit):
         connect to a server."""
         # Connect to each server, and retrieve the domain and name of
         # the local administrators group.
-        for server in self.host_list:
+        for server in self.server_list:
+            server = str(server).strip('$')
             local_admins = []
             try:
                 admin_data = NLGGM(r'\\' + server, 'administrators', 1)
@@ -409,7 +413,7 @@ class WinServerAudit(ADAudit):
             'SEC': self.config['siem']['token']
         }
         # Making the request.  Since Q-Radar uses a self signed cert, we
-        # are disabling SSL validation.
+        # are disabling SSL validation.  This needs to be fixed later.
         response = get(
             url,
             params=params,
@@ -446,5 +450,5 @@ class WinServerAudit(ADAudit):
         None."""
         # Basic list content check.
         for server in self.server_list:
-            if server not in log_source_list:
-                self.no_log_servers.append(server)
+            if str(server).strip('$') not in log_source_list:
+                self.no_log_servers.append(str(server.strip('$')))

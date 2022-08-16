@@ -29,8 +29,8 @@ def main():
     }
     ldap_pwd = core.get_credentials(scss_dict)
     ldap_dict = {
-        'ldap_url': config['domain']['ldap_url'],
-        'bind_dn': config['domain']['ldap_dn'],
+        'ldap_url': config['ldap']['ldap_url'],
+        'bind_dn': config['ldap']['ldap_dn'],
         'bind_pwd': ldap_pwd
     }
     server_ous = config['servers']['ous'].split('|')
@@ -45,7 +45,7 @@ def main():
     log_me.info('Beginning AD audit.')
     ad_audit = winaudit.ADAudit()
     # Getting domain admins.
-    ad_audit.get_domain_admins(ldap_dict, config['domain']['adm_dn'])
+    ad_audit.audit_domain_admins(ldap_dict)
     # Comparing list of domain admins against known good.
     ad_audit.get_domain_admin_ex()
     log_me.info('AD Audit complete.')
