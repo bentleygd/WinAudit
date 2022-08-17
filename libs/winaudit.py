@@ -30,7 +30,7 @@ class ADAudit():
         Methods:
         get_servers = populates self.host_list with a list of servers
         in Active directory via LDAP.
-        get_domain_admins = populates self.domain_admins with a list of
+        audit_domain_admins = populates self.domain_admins with a list of
         domain admins.
         get_domain_admin_ex = compares list of admins retrieved from AD
         against a list of instrumented admins and returns the
@@ -122,9 +122,9 @@ class ADAudit():
         ldap_dict - dict(), a dictionary containing the following keys:
         ldap_url, bind_dn, bind_pwd
 
-        Returns:
-        admin_list - list(), A list of dictionaries containing domain
-        admins.
+        Output:
+        self.domain_admins - This method populates the self.domain_admins
+        instance variable.
 
         Raises:
         LDAPExceptionError - Occurs when the LDAP3 functions generate an
@@ -282,7 +282,7 @@ class WinServerAudit(ADAudit):
         Methods:
         get_local_admins - Gets all of the local administrators from the
         parent attribute of host list.
-        get_admin_ex - Generates a list of user accounts that are not
+        get_local_admin_ex - Generates a list of user accounts that are not
         authorized to have local admin rights.
         get_siem_sources - Retrieves a list of log sources from IBM's
         Q-Radar SIEM.
@@ -418,7 +418,7 @@ class WinServerAudit(ADAudit):
             url,
             params=params,
             headers=headers,
-            verify=False
+            verify='ca-bundle.crt'
         )
         # Checking to see if the request was successful
         try:
