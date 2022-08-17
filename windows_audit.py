@@ -10,7 +10,7 @@ def main():
 
     This is used to avoid accidental code execution."""
     # Setting up logging.
-    log_me = getLogger('WinAudit_Log')
+    log_me = getLogger(__name__)
     basicConfig(
         format='%(asctime)s %(name)s %(levelname)s: %(message)s',
         datefmt='%m/%d/%Y %H:%M:%S',

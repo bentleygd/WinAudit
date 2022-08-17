@@ -241,7 +241,7 @@ config.read('config.cnf')
 ldap_info = {
     'ldap_url': config['ldap']['ldap_url'],
     'bind_dn': config['ldap']['ldap_dn'],
-    'bind_pwd': 'ldap_pwd' # Never store password in code or in clear text.
+    'bind_pwd': 'ldap_pwd' # Never store passwords in code or in clear text.
 
 }
 # Retrieving the server OUs from the configuration file.

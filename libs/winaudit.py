@@ -299,7 +299,7 @@ class WinServerAudit(ADAudit):
         """Retrieves the local admins from a Windows server.
 
         Inputs:
-        self.host_list - list(), A list of hosts that is pouplated by
+        self.server_list - list(), A list of hosts that is pouplated by
         the get_servers method inherited from the ADAudit class.
 
         Outputs:
