@@ -155,3 +155,8 @@ class TestServerConnections:
         test_audit.get_servers(ldap_data, server_ous)
         test_audit.get_local_admins()
         assert len(test_audit.local_admins) > 0
+
+    def test_siem_sources(self):
+        test_audit = WinServerAudit()
+        siem_sources = test_audit.get_siem_sources()
+        assert len(siem_sources) > 0
