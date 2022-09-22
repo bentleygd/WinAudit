@@ -66,10 +66,10 @@ def log_source_check():
     msg_body += (
         '\n' * 2 +
         'Number of log sources not in AD:' +
-        str(len(win_audit.invalid_servers)) + '\n' +
+        str(len(win_audit.invalid_sources)) + '\n' +
         'Log sources not in AD: ' + '\n'
         )
-    for log_source in win_audit.invalid_servers:
+    for log_source in win_audit.invalid_sources:
         msg_body += log_source + '\n'
     msg_body += '*' * 64 + '\n'
     mail_info = {
