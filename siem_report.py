@@ -47,15 +47,30 @@ def log_source_check():
     # Generating log source exception list.  Note: the exceptions are
     # stored inthe self.no_log_sources instance variable
     win_audit.get_siem_source_ex(log_sources)
+    win_audit.get_log_source_ex(log_sources)
     # Generating and sending the email.
+    #
+    # This portion of the email is for servers in AD that are not
+    # configured as log sources
     msg_body = (
         '*' * 64 + '\n' +
-        'Number of exceptions: ' +
+        'Number of servers in AD that are not log sources: ' +
         str(len(win_audit.no_log_servers)) + '\n' +
         'Log source exceptions: ' + '\n'
         )
     for server in win_audit.no_log_servers:
         msg_body += server + '\n'
+    msg_body += '*' * 64 + '\n'
+    # This portion of the email is for servers that are configured as
+    # log sources but are not in AD.
+    msg_body += (
+        '\n' * 2 +
+        'Number of log sources not in AD:' +
+        str(len(win_audit.invalid_servers)) + '\n' +
+        'Log sources not in AD: ' + '\n'
+        )
+    for log_source in win_audit.invalid_servers:
+        msg_body += log_source + '\n'
     msg_body += '*' * 64 + '\n'
     mail_info = {
         'sender': config['mail']['sender'],
