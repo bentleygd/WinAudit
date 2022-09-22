@@ -100,8 +100,12 @@ class ADAudit():
             )
             for data in search_data:
                 raw_data.append(data['raw_attributes'])
+        # Iterating through the results and cleaning up the server name
+        # (removing the trailing $) and appending the results to the
+        # self.server_list instance variable.
         for server in raw_data:
-            server_name = server['sAMAccountName'][0].decode().lower()
+            _server_name = server['sAMAccountName'][0].decode().lower()
+            server_name = str(_server_name).strip('$')
             self.server_list.append(server_name)
         # Unbinding LDAP object to free up resources.
         conn.unbind()
@@ -294,6 +298,7 @@ class WinServerAudit(ADAudit):
         self.unreachable_servers = []
         self.reachable_servers = []
         self.no_log_servers = []
+        self.invalid_sources = []
 
     def get_local_admins(self):
         """Retrieves the local admins from a Windows server.
@@ -405,9 +410,14 @@ class WinServerAudit(ADAudit):
         source_list = []
         # Configuring the request to the Q-Radar endpoint
         url = self.config['siem']['log_source_endpoint']
-        params = {'fields': 'name'}
+        # Please note that we are filtering for Microsoft Security
+        # Event Log source with type_id = 12.
+        params = {
+            'fields': 'name',
+            'filter': 'type_id = 12'
+            }
         headers = {
-            'version': '16.0',
+            'version': '19.0',
             'Accept': 'application/json',
             'Content-Type': 'application/json',
             'SEC': self.config['siem']['token']
@@ -431,7 +441,9 @@ class WinServerAudit(ADAudit):
         # Parsing the JSON response
         data = response.json()
         for entry in data:
-            source_list.append(entry['name'])
+            _server_name = entry['name']
+            server_name = str(_server_name).lower()
+            source_list.append(server_name)
         return source_list
 
     def get_siem_source_ex(self, log_source_list):
@@ -448,7 +460,32 @@ class WinServerAudit(ADAudit):
 
         Exceptions:
         None."""
-        # Basic list content check.
+        # Iterating through the list of servers from self.server list
+        # and checking to see if the host is in the list of configured
+        # log sources in Q-Radar.
         for server in self.server_list:
-            if str(server).strip('$') not in log_source_list:
-                self.no_log_servers.append(str(server.strip('$')))
+            if server not in log_source_list:
+                self.no_log_servers.append(server)
+
+    def get_log_source_ex(self, log_source_list):
+        """This method is a list comparison that generates a list of
+        log sources that are not in the list of Windows servers. This
+        is done in order to keep track of hosts that are no longer
+        operational but are still configured as log sources.
+
+        Required Input:
+        log_source_list - list(), A list of hostnames that are sending
+        logs to a SIEM.
+
+        Output:
+        self.invalid_sources is updated and can be referenced to obtain
+        the results of this method.
+
+        Exceptions:
+        None."""
+        # Iterating through the list of log sources retrieved from
+        # Q-Radar and seeing if they are still in AD by comparing them
+        # to the servers in self.server_list.
+        for log_source in log_source_list:
+            if log_source not in self.server_list:
+                self.invalid_sources.append(log_source)
