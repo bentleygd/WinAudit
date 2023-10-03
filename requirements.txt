@@ -6,4 +6,4 @@ pyasn1==0.4.8
 pyotp==2.6.0
 pywin32==304
 requests==2.31.0
-urllib3==1.26.11
+urllib3==1.26.17
